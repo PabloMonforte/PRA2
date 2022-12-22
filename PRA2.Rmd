@@ -1,0 +1,398 @@
+---
+title: "PEC2"
+author: "Pablo Monforte Izquierdo"
+date: "2022-12-21"
+output: 
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Descripción del dataset
+
+¿Por qué es importante y qué pregunta/problema pretende responder?
+
+El conjunto de datos objeto de análisis se ha obtenido a partir de este enlace en Kaggle y está constituido por 14 características (columnas) que presentan 303 pacientes (filas o registros). Entre los campos de este conjunto de datos, encontramos los siguientes:
+
+* Age : Edad del paciente
+* Sex  : Sexo del paciente
+* cp : Tipo de dolor torácico tipo de dolor torácico
+  + Value 1: angina típica
+  + Value 2: angina atípica
+  + Value 3: dolor no anginoso
+  + Value 4: asintomático
+* trtbps : presión arterial en reposo (en mm Hg)
+* chol : colesterol en mg/dl obtenido a través del sensor de IMC
+* fbs : (glucemia en ayunas > 120 mg/dl) (1 = verdadero; 0 = falso)
+* rest_ecg : resultados electrocardiográficos en reposo
+  + Value 0: normal
+  + Value 1: con anomalía de la onda ST-T (inversiones de la onda T y/o elevación o depresión del ST de > 0,05 mV)
+  + Value 2: hipertrofia ventricular izquierda probable o definida según los criterios de Estes
+* thalach : frecuencia cardiaca máxima alcanzada
+* exng: angina inducida por ejercicio (1 = sí; 0 = no)
+* oldpeak: Pico anterior
+* slp: Pendiente
+* ca: número de vasos principales (0-3)
+* thall: Ratio Thal
+* output:  0= menor probabilidad de infarto 1= mayor probabilidad de infarto
+
+Con este conjunto se plantea la problemática de determinar qué variables influyen más a la hora de tener un infarto. También se construirán modelos de regresión logistica para determinar si una persona sufrirá un infarto o no. Además también se harán contrastes de hipotesis para detectar propiedades interesantes en las muestras que puedan ser inferidas con respecto a la población.
+ 
+Estos analisis son muy importantes para la salud de las personas ya que puede ayudar a detectar que personas tienen un riesgo alto de sufrir un infarto.
+
+# 2. Integración y selección de los datos de interés a analizar
+
+Puede ser el resultado de adicionar diferentes datasets o una subselección útil de los datos originales, en base al objetivo que se quiera conseguir.
+
+Para resolver el problema solamente se utilizará el siguinte dataset. Después de realizar el analisis correspondiente es posible que algunas variables de descarten a la hora de realizar los análisis. 
+
+```{r}
+heart = read.csv('./heart.csv')
+dim(heart)
+head(heart)
+```
+
+# 3. Limpieza de los atos
+
+Lo primero que haremos será ver el tipo de dato de cada columna para ver si necesitamos realizar modificaciones.
+
+```{r}
+str(heart)
+```
+
+Vemos que todos los valores son tipo int o num pero hay algunos que nos interesa que sean tipo factor ya que son algunas variables categóricas con un número finito de valores o niveles.
+
+```{r}
+heart$sex <- as.factor(heart$sex)
+heart$cp <- as.factor(heart$cp)
+heart$restecg <- as.factor(heart$restecg)
+heart$exng <- as.factor(heart$exng)
+heart$thall <- as.factor(heart$thall)
+heart$output <- as.factor(heart$output)
+```
+
+Vemos que ya tenemos los datos con los formatos que nos interesan.
+
+```{r}
+str(heart)
+```
+
+## 3.1. ¿Los datos contienen ceros o elementos vacíos?
+
+Gestiona cada uno de estos casos.
+
+A continuación vamos a comprobar si los datos tienen valores nulos.
+
+```{r}
+sapply(heart, function(x) sum(is.na(x)))
+```
+
+Vemos que no existe ningún valor nulo por lo que no tendremos que gestionarlos.
+
+## 3.2. Identifica y gestiona los valores extremos
+
+A continuación vamos a ver si existen valores extremos en las variables.
+
+```{r}
+layout(matrix(c(0:14), nrow=3, byrow=FALSE))
+for (i in 1:14) boxplot(heart[i])
+  
+```
+
+Vemos que tenemos outliers en trtbps, chol, fbs, thalachh, oldpeak, caa, thall. A continuación vamos a ver que outliers elimnaremos y cuales no. 
+
+Los outliers de trtbps no parecen que sean datos erroneos si no mediciones que son poco normales por lo que no los eliminaremos.
+
+Con los outliers de chol ocurre lo mismo que con los de trtbps.
+
+En fbs no hay outilers solamente pocos valores con 1.
+
+En thalachh pasa lo mismo que el chol y trtbps.
+
+En oldpeak sucede lo mismo.
+
+En caa si que tenemos outlier erroneos ya que en algunos registros tenemos el valor 4 y esto es imposible ya que solamente podemos tener valores entre 0 y 3 por lo que eliminaremos estos registros.
+
+```{r}
+heart <- heart[heart$caa <= 3, ]
+```
+
+Para thall no parecen que sean datos erroneos si no mediciones que son poco normales por lo que no los eliminaremos.
+
+Ya tenemos los datos listos para anlizar por lo que exportaremos el archivo limpio.
+
+```{r}
+write.csv(heart, "heart_clean.csv")
+```
+
+# 4. Análisis de los datos
+
+## 4.1. Selección de los grupos de datos que se quieren analizar/comparar
+
+(p.ej., si se van a comparar grupos de datos, ¿cuáles son estos grupos y qué tipo de análisis se van a aplicar?)
+
+Vamos a selecionar los grupos que vamos a estudiar.
+
+```{r}
+hombres <- heart[heart$sex == 1, ]
+mujeres <- heart[heart$sex == 0, ]
+
+pacientes_riesgo <- heart[heart$output == 1, ]
+paceintes_no_riesgo <- heart[heart$output == 0, ]
+```
+
+## 4.2. Comprobación de la normalidad y homogeneidad de la varianza
+
+Comprobaremos la normalida y homogeneidad de la variaznza de la variables chol ya que en en los siguientes apartados haremos contrastes de hipotesis en torno a esta variable.
+
+```{r}
+shapiro.test(heart$chol)
+qqnorm(heart$chol)
+```
+
+Vemos que la variable chol no sigue una distribución normal. Por lo que tendremos que aplicar boxCox para que la varibale siga una distribución normal y después volveremos a comprobar si ya sigue una distribución normal.
+
+```{r}
+heart$chol_norm <- log(heart$chol)
+shapiro.test(heart$chol_norm)
+qqnorm(heart$chol_norm)
+```
+
+Ahora la variable que hemos guardado en heart$chol_norm ya sigue una distribución normal.
+
+Tenemos que volver a seleccionar nuestros grupos de interés con la nueva variable.
+
+```{r}
+hombres <- heart[heart$sex == 1, ]
+mujeres <- heart[heart$sex == 0, ]
+
+pacientes_riesgo <- heart[heart$output == 1, ]
+paceintes_no_riesgo <- heart[heart$output == 0, ]
+```
+
+Ahora vamos a ver si los hombres y mujeres siguen tienen homogeneidad de la varianza respecto al colesterol.
+
+```{r}
+fligner.test(x = list(hombres$chol_norm,mujeres$chol_norm))
+```
+
+Vemos que tienen los hombres y mujeres tienen varianzas homogeneas respecto a la variable colesterol normalizada.
+
+## 4.3. Aplicación de pruebas estadísticas para comparar los grupos de datos 
+
+En función de los datos y el objetivo del estudio, aplicar pruebas de contraste de hipótesis, correlaciones, regresiones, etc. Aplicar al menos tres métodos de análisis diferentes.
+
+### ¿Ser mujer influye en los niveles de colesterol?
+
+Lo primero que vamos a hacer va a ser visualizar los datos para entenderlos mejor.
+
+```{r}
+library(ggplot2)
+ggplot(data=heart, aes(x=chol_norm,  fill=sex)) +
+    geom_density(adjust=1.5, alpha=.4)
+```
+
+Hipotesis:
+
+La hipotesis nula es que las medias de colesterol de los hombres y mujeres sean iguales:
+
+H0: $$\mu1 = \mu2$$
+
+La hiposesis altenativa es que las medias de colesterol de los hombres y mujeres no sean iguales:
+
+H1: $$\mu1 \neq \mu2$$
+
+Como va variable colesterol sigue una distribución normal pero desconocemos su varianza haremos un contraste t de dos colas, pero antes tenemos que saber si las varianzas son iguales o diferetes.
+
+```{r}
+var.test(hombres$chol_norm, mujeres$chol_norm)
+```
+
+Las varianzas son desiguales, ahora que ya tenemos toda la información necesaria podemos realizar el contraste.
+
+```{r}
+t.test(hombres$chol_norm, mujeres$chol_norm,
+       alternative = "two.sided",
+       var.equal = FALSE,
+       conf.level = 0.95)
+```
+
+Vemos que el p-valor es de 0.008141 y como es menor que alfa que es 0.05 rechazamos la h0. Esto quiere decir que las medias de los nieveles de colesterol de los hombres y mujeres no sean iguales. 
+
+### ¿Las mujeres tienen más colesterol que los hombres?
+
+Ahora el contraste que realizaremos será el siguiente.
+
+Hipotesis:
+
+La hipotesis nula es que las medias de colesterol de los hombres y mujeres sean iguales:
+
+H0: $$\mu1 = \mu2$$
+
+La hiposesis altenativa es que la media de colesterol de los hombres sea superior a la de las mujeres:
+
+H1: $$\mu1 > \mu2$$
+
+Para este test utilizaremos la variable que hemos creado anteriormente de chol_norm, que ya sabemos que sigue una distribución normal y las varianzas entre hombres y mujeres son iguales.
+
+```{r}
+t.test(mujeres$chol_norm ,hombres$chol_nor,
+       alternative = "greater",
+       var.equal = FALSE,
+       conf.level = 0.95)
+```
+
+Obtenemos un p-valor inferior a 0.05 por lo que se rechaza h0. Los hombres tienen una media superior de colesterol que la de las mujeres. 
+
+### ¿Hay más ataques al corazon entre los hombres que entre las mujeres?
+
+Por último la pregunta que nos haremos será si hay una proporción mayor de ataques al corazon entre los hombres que entre las mujeres.
+
+Vamos a hacer va a ser visualizar los datos para entenderlos mejor.
+
+```{r}
+#división entre sexos de personas con altas probablidades de sufrir un infarto
+plot(factor(heart$sex[heart$output==1]))
+
+#división entre sexos de personas con bajas probablidades de sufrir un infarto
+plot(factor(heart$sex[heart$output==0]))
+```
+
+Las hipotesis serían las siguientes:
+
+La hipotesis nula es que la proporción de ataques al corazón es igual en hombres que en mujeres :
+
+H0: p1 = p2
+
+La hiposesis altenativa es que la proporción de ataques al corazón es superior en hombres que en mujeres:
+
+H1: p1 > p2
+
+Creamos los valores para calcular las proporciones
+
+```{r}
+#mujeres que pueden sufrir un infarto
+minf <- dim(subset(heart, heart$sex==0 & heart$output==1))[1]
+#total de mujeres
+m <- dim(subset(heart, heart$sex==0 ))[1]
+#hombres que pueden sugrir un infarto
+hinf <- dim(subset(heart, heart$sex==1 & heart$output==1))[1]
+#total de hombres.
+h <- dim(subset(heart, heart$sex==1 ))[1]
+```
+
+Realizamos el test
+
+```{r}
+prop.test(x = c(minf, hinf), n = c(m, h), 
+          alternative = "greater",
+          conf.level = 0.95,
+          correct=FALSE)
+```
+
+El p-valor es menor que 0.05 por lo que rechazamos h0 y podemos concluir que la proporción de ataques al corazón es superior en hombres que en mujeres.
+
+### Modelo de regresión
+
+Lo siguente que haremos ser crear un modelo de regresión para predecir si una persona va a sufrir un infarto o no.
+
+Lo primero que haremos será dividir los datos en dos muestras una para entrenar al modelo y otra para testearlo.
+
+```{r}
+set.seed(25) 
+sample <- sample(c(TRUE, FALSE), nrow(heart), replace=TRUE, prob=c(0.8,0.2))
+train  <- heart[sample, ]
+test   <- heart[!sample, ]
+dim(train)
+dim(test)
+```
+
+A continuación vamos a crear un primer modelo con todas las variables que tenemos actualmente.
+
+```{r}
+modelo <- glm(output~., data = train, family = 'binomial')
+summary(modelo)
+```
+
+Correlación y colinealidad
+
+Vamos a estudiar si hay algunos valores que estén correlacionados y causen algún conflicto en el modelo.
+
+```{r}
+car::vif(modelo)
+library(corrplot)
+```
+
+Vemos que la variable que hemos creado tiene problemas con la variable original chol por lo que eliminaremos del modelo la variable creada. En la matriz de corrrelación podemos ver mejor esta correlación.
+
+```{r}
+# volvemos a porner los valores con formato integer para que poder utilizar corrrplot
+heartnum <- heart
+heartnum$sex <- as.integer(heart$sex)
+heartnum$cp <- as.integer(heart$cp)
+heartnum$restecg <- as.integer(heart$restecg)
+heartnum$exng <- as.integer(heart$exng)
+heartnum$thall <- as.integer(heart$thall)
+heartnum$output <- as.integer(heart$output)
+
+corrplot(cor(heartnum), method = "circle") 
+```
+
+Vamos a crear nuevos modelos con menos variables para ver si conseguimos mejorar el que ya tenemos. Eliminaremos variables que eran poco significativas en el modelo anterior.
+
+```{r}
+modelo2 <- glm(output~. - chol_norm - age - trtbps - restecg - fbs - oldpeak, data = train, family = 'binomial')
+summary(modelo2)
+```
+
+Vemos que el valor AIC ha bajado en comparación con el anterior modelo por lo que en teoría este será mejor. Ahora vamos a realizar predicciones para ver la precisión de nuestro modelo.
+
+```{r}
+predict <- predict(modelo2, test, type = 'response')
+mat <- table(test$output, predict > 0.5)
+mat
+```
+
+A continuación vamos a calcular las medidas de sensibilidad y especificidad:
+
+Sensibilidad:
+
+```{r}
+mat[4]/(mat[4]+mat[2])
+```
+
+Especifidad: 
+
+```{r}
+mat[1]/(mat[1]+mat[3])
+```
+
+Por último, vamos a ver si la curba roc de nuestro modelo.
+
+```{r}
+if (!require("pROC")) install.packages("pROC")
+#library(pROC)
+prob=predict
+r=roc(test$output,prob, data=test)
+plot (r)
+auc(r)
+```
+
+Tenemos una curba roc del 89% por lo que tenemos un modelo bastante preciso.
+
+# 5. Resolución del problema
+
+A partir de los resultados obtenidos, ¿cuáles son las conclusiones? ¿Los resultados permiten responder al problema?
+
+Como se ha visto, se han realizado pruebas estadísticas sobre un conjunto de datos que se correspondía con diferentes variables relativas a pacientes con motivo de cumplir en la medida de lo posible con el objetivo que se planteaba al comienzo. Para cada una de ellas, hemos podido ver cuáles son los resultados que arrojan y qué conocimientos pueden extraerse a partir de ellas.
+
+El modelo de regresión lineal obtenido resulta de utilidad a la hora de realizar predicciones para la variable output dadas unas características concretas. Además también hemos visto como seleccionar variables basandonos en la colinealidad de estas o en la influencia en el modelo.
+
+Antes de realizar estos procesos, se han sometido los datos a un preprocesamiento en el que se ha estudiado los valores nulos y los outliers y los tipos de formato. En el primer caso no se ha encontrado valores nulos. Para el caso del segundo, algunos de los outliers se han dejado como estaban porque no se debian a errores pero en otros casos se han eliminado los registros con valores erroneos. Tambíen se han gestionado los tipos de variable y se han cambiado los que no pertenecian a su tipo original.
+
+
